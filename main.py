@@ -68,7 +68,7 @@ def send_mail(html):
     try:
         with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
             smtp.starttls()
-            smtp.login('sahilratnaparkhi1@gmail.com', 'sftu okmq ryop bdpd')
+            smtp.login('sahilratnaparkhi1@gmail.com', 'wodt opdh mlei lazm')
             smtp.send_message(msg)
 
         print("Email sent!")
