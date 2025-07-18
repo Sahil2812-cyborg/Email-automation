@@ -6,7 +6,7 @@ import smtplib
 import logging
 from email.message import EmailMessage
 
-current_datetime = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+current_datetime = datetime.now().strftime("%d %b %Y")
 
 logging.basicConfig(
     filename='logs.log',
@@ -56,11 +56,15 @@ def execute_query(query, db_connection):
 
 def send_mail(html, config):
     msg = EmailMessage()
-    msg['Subject'] = f'Query Report: Top Slow & Most Run Queries for {current_datetime}'
+    msg['Subject'] = f'OpenSpecimen: Slow query report for {current_datetime}'
     msg['From'] = config.get('emailid')
-    msg['To'] = config.get('to_emailid')
 
-    msg.set_content('Please find below the report containing the top 5 slow-running queries, most frequently run saved queries, and users executing the highest number of queries in the last 24 hours.')
+    receiver_emails = config.get('to_emailid')
+    if isinstance(receiver_emails, str):
+        receiver_emails = [receiver_emails]
+    msg['To'] = ", ".join(receiver_emails)
+
+    msg.set_content('Please find below the report on queries run during the last 24 hours.')
     msg.add_alternative(html, subtype='html')
     try:
         with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
@@ -113,7 +117,9 @@ def add_url_to_dataframe(df, config):
     query_ids = df['query_id'].dropna().tolist()
     urls = get_query_url(query_ids, config.get('url'))
     
-    df['URL'] = df['query_id'].apply(lambda qid: urls[qid]['url'] if qid in urls else None)
+    df['URL'] = df['query_id'].apply(
+    lambda qid: f'<a href="{urls[qid]["url"]}" target="_blank">Click here</a>' if qid in urls else None
+    )
     logging.info('Added urls to the dataframe')
     return df
 
@@ -132,7 +138,15 @@ def generate_html_report(query, output_filename, config, db_connection, drop_col
         
         df.columns = [col.replace('_', ' ').title() for col in df.columns]
 
-        html_table = df.to_html(index=False)
+        df.columns = [col.replace('Time Taken', 'Time Taken (in seconds)') for col in df.columns]
+        df.columns = [col.replace('Cnt', 'Number of Queries') for col in df.columns]
+
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date']).dt.strftime("%d %b %Y %H-%M-%S")
+
+
+
+        html_table = df.to_html(index=False, escape=False)
 
         with open(output_filename, 'w') as f:
             f.write(html_table)
@@ -140,7 +154,7 @@ def generate_html_report(query, output_filename, config, db_connection, drop_col
         logging.info(f"Report generated: {output_filename}")
         return html_table
 
-    except Exception as e:
+    except Exception as e:  
         logging.error(f"Failed to generate report for {output_filename}: {e}")
         return ""
 
@@ -193,7 +207,7 @@ def main():
                 "drop_columns": ["cnt"]
             },
             {
-                "title": "Top 5 users running most queries.",
+                "title": "Top 10 users running most queries.",
                 "query": """SELECT CONCAT(first_name, ' ', last_name) AS name, 
                                    COUNT(*) AS cnt, 
                                    MAX(time_of_exec) AS Date, 
@@ -201,10 +215,11 @@ def main():
                             FROM catissue_query_audit_logs logs 
                             JOIN catissue_user user ON user.identifier = logs.run_by 
                             WHERE time_of_exec >= NOW() - INTERVAL 1 DAY 
-                            GROUP BY run_by 
-                            LIMIT 5;""",
+                            GROUP BY run_by
+                            ORDER BY cnt DESC
+                            LIMIT 10;""",
                 "output_filename": "users_running_most_queries.html",
-                "drop_columns": ["cnt"]
+                "drop_columns": ["time_taken"]
             }
         ]
 
@@ -224,11 +239,11 @@ def main():
         combined_html = f"""
         <html>
         <body>
-            <p>Please find below the automated report containing the top 5 slow-running queries, most frequently run saved queries, and users executing the highest number of queries in the last 24 hours.</p>
+            <p>Please find below the report on queries run during the last 24 hours.</p>
             {html_sections}
             <div style="margin-top: 30px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
                 <p><strong>Thanks,</strong><br>Openspecimen Administrator</p>
-                <p><small>Report generated automatically on {current_datetime}</small></p>
+                <p><small>Report generated automatically on {datetime.now().strftime("%d %b %Y %H-%M-%S")}</small></p>
             </div>
         </body>
         </html>
