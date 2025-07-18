@@ -25,27 +25,15 @@ def load_config():
     except FileNotFoundError:
         print("Error: 'config.json' file not found.")
         logging.error("File not found")
-        return
-    
-config = load_config()
+        return None
 
-host = config.get("host")
-user = config.get("user")
-password = config.get('password')
-database = config.get("database")
-emailid = config.get('emailid')
-email_password = config.get('emailpassword')
-to_emailid = config.get('to_emailid')
-base_url = config.get('url')
-
-
-def create_db_connection():
+def create_db_connection(config):
     try:
         db = mysql.connector.connect(
-            host=host,
-            user=user,
-            password=password,
-            database=database,
+            host=config.get("host"),
+            user=config.get("user"),
+            password=config.get('password'),
+            database=config.get("database"),
         )
         logging.info("Connected to database")
         return db
@@ -66,20 +54,18 @@ def execute_query(query, db_connection):
         logging.error(f"Failed to execute query: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
 
-
-
-def send_mail(html):
+def send_mail(html, config):
     msg = EmailMessage()
-    msg['Subject'] = f'Query Report: Top Slow & Most Run Querie for {current_datetime}'
-    msg['From'] = emailid
-    msg['To'] = to_emailid
+    msg['Subject'] = f'Query Report: Top Slow & Most Run Queries for {current_datetime}'
+    msg['From'] = config.get('emailid')
+    msg['To'] = config.get('to_emailid')
 
     msg.set_content('Please find below the report containing the top 5 slow-running queries, most frequently run saved queries, and users executing the highest number of queries in the last 24 hours.')
     msg.add_alternative(html, subtype='html')
     try:
         with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
             smtp.starttls()
-            smtp.login(emailid, email_password)
+            smtp.login(config.get('emailid'), config.get('emailpassword'))
             smtp.send_message(msg)
 
         logging.info("Email Sent!!")
@@ -107,7 +93,7 @@ def send_mail(html):
         logging.error(f"Unexpected error: {e}")
         return False
 
-def get_query_url(query_ids, base_url=base_url):
+def get_query_url(query_ids, base_url):
     query_urls = {}
     if not query_ids:
         return query_urls
@@ -123,27 +109,20 @@ def get_query_url(query_ids, base_url=base_url):
     logging.info("Extracted urls")
     return query_urls
                    
-
-def add_url_to_dataframe(df):
+def add_url_to_dataframe(df, config):
     query_ids = df['query_id'].dropna().tolist()
-    urls = get_query_url(query_ids)
+    urls = get_query_url(query_ids, config.get('url'))
     
     df['URL'] = df['query_id'].apply(lambda qid: urls[qid]['url'] if qid in urls else None)
     logging.info('Added urls to the dataframe')
     return df
 
-def generate_html_report(query, output_filename, drop_columns=None):
-    db_connection = create_db_connection()
-    if not db_connection:
-        logging.error("Cannot generate report due to failed DB connection.")
-        return ""
-
+def generate_html_report(query, output_filename, config, db_connection, drop_columns=None):
     try:
         df = execute_query(query, db_connection)
-        db_connection.close()
 
         if 'query_id' in df.columns:
-            df = add_url_to_dataframe(df)
+            df = add_url_to_dataframe(df, config)
 
         if drop_columns:
             missing_cols = [col for col in ([drop_columns] if isinstance(drop_columns, str) else drop_columns) if col not in df.columns]
@@ -152,7 +131,6 @@ def generate_html_report(query, output_filename, drop_columns=None):
             df = df.drop(columns=[col for col in drop_columns if col in df.columns], errors='ignore')
         
         df.columns = [col.replace('_', ' ').title() for col in df.columns]
-
 
         html_table = df.to_html(index=False)
 
@@ -166,17 +144,29 @@ def generate_html_report(query, output_filename, drop_columns=None):
         logging.error(f"Failed to generate report for {output_filename}: {e}")
         return ""
 
-
 def main():
     logging.info("Process Started")
+    
+    # Load configuration
+    config = load_config()
+    if config is None:
+        logging.error("Failed to load configuration. Exiting.")
+        return
+    
+    # Create database connection
+    db_connection = create_db_connection(config)
+    if not db_connection:
+        logging.error("Cannot generate report due to failed DB connection. Exiting.")
+        return
+    
     try:
         queries = [
             {
                 "title": "Top 5 slowest running queries.",
                 "query": """SELECT logs.query_id, 
-                                   CONCAT(first_name, ' ', last_name) AS user, 
-                                   time_to_finish AS time_taken, 
-                                   time_of_exec AS Date 
+                                   CONCAT(first_name, ' ', last_name) AS Name,
+                                   time_of_exec AS Date , 
+                                   time_to_finish AS time_taken                                   
                             FROM catissue_query_audit_logs logs 
                             JOIN catissue_user usr ON logs.run_by = usr.identifier 
                             WHERE time_of_exec >= NOW() - INTERVAL 1 DAY 
@@ -225,6 +215,8 @@ def main():
             html_table = generate_html_report(
                 query=q["query"],
                 output_filename=q["output_filename"],
+                config=config,
+                db_connection=db_connection,
                 drop_columns=q["drop_columns"]
             )
             html_sections += f"<h3>{q['title']}</h3>{html_table}<br>"
@@ -234,20 +226,23 @@ def main():
         <body>
             <p>Please find below the automated report containing the top 5 slow-running queries, most frequently run saved queries, and users executing the highest number of queries in the last 24 hours.</p>
             {html_sections}
-            <p>The goal of this report is to help identify potential performance bottlenecks and active usage patterns.</p>
             <div style="margin-top: 30px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
-                <p><strong>Regards,</strong><br>Your Database Monitoring Script</p>
+                <p><strong>Thanks,</strong><br>Openspecimen Administrator</p>
                 <p><small>Report generated automatically on {current_datetime}</small></p>
             </div>
         </body>
         </html>
         """
 
-        email_sent = send_mail(combined_html)
+        email_sent = send_mail(combined_html, config)
 
     except Exception as e:
         logging.error(e)
-
+    finally:
+        # Close database connection
+        if db_connection:
+            db_connection.close()
+            logging.info("Database connection closed")
 
 if __name__ == '__main__':
     main()
