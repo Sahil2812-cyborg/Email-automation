@@ -54,10 +54,11 @@ def execute_query(query, db_connection):
         logging.error(f"Failed to execute query: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
 
+# Updated send_mail function for AWS SES
 def send_mail(html, config):
     msg = EmailMessage()
     msg['Subject'] = f'OpenSpecimen: Slow query report for {current_datetime}'
-    msg['From'] = config.get('emailid')
+    msg['From'] = config.get('emailid')  # This should be dummy@gmail.com
 
     receiver_emails = config.get('to_emailid')
     if isinstance(receiver_emails, str):
@@ -66,27 +67,32 @@ def send_mail(html, config):
 
     msg.set_content('Please find below the report on queries run during the last 24 hours.')
     msg.add_alternative(html, subtype='html')
+    
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-            smtp.starttls()
-            smtp.login(config.get('emailid'), config.get('emailpassword'))
+        # Updated SMTP configuration for AWS SES
+        with smtplib.SMTP(config.get('smtp_server'), config.get('smtp_port', 587)) as smtp:
+            smtp.starttls()  # AWS SES requires TLS
+            # Use AWS SES SMTP credentials (not your AWS console credentials)
+            smtp.login(config.get('smtp_username'), config.get('smtp_password'))
             smtp.send_message(msg)
 
-        logging.info("Email Sent!!")
+        logging.info("Email Sent via AWS SES!!")
+        print("Email sent successfully via AWS SES!")
         return True
     
     except smtplib.SMTPAuthenticationError as e:
         print(f"Authentication failed: {e}")
-        print("Check your email and password/app password")
-        logging.error(f"Authentication error: {e}")
+        print("Check your AWS SES SMTP username and password")
+        logging.error(f"SMTP Authentication error: {e}")
         return False
     except smtplib.SMTPRecipientsRefused as e:
         print(f"Recipient refused: {e}")
-        logging.error((f"Recipient refused: {e}"))
+        print("Make sure recipient email is verified in AWS SES (if in sandbox mode)")
+        logging.error(f"Recipient refused: {e}")
         return False
     except smtplib.SMTPServerDisconnected as e:
         print(f"Server disconnected: {e}")
-        logging.error((f"Server disconnected: {e}"))
+        logging.error(f"Server disconnected: {e}")
         return False
     except smtplib.SMTPException as e:
         print(f"SMTP error: {e}")
@@ -178,13 +184,16 @@ def main():
             {
                 "title": "Top 5 slowest running queries.",
                 "query": """SELECT logs.query_id, 
-                                   CONCAT(first_name, ' ', last_name) AS Name,
-                                   time_of_exec AS Date , 
-                                   time_to_finish AS time_taken                                   
+                                   CONCAT(usr.first_name, ' ', usr.last_name) AS name, 
+                                   COUNT(*) AS cnt, 
+                                   MAX(logs.time_of_exec) AS Date, 
+                                   MAX(logs.time_to_finish) AS time_taken  
                             FROM catissue_query_audit_logs logs 
-                            JOIN catissue_user usr ON logs.run_by = usr.identifier 
-                            WHERE time_of_exec >= NOW() - INTERVAL 1 DAY 
-                            ORDER BY time_to_finish DESC 
+                            INNER JOIN catissue_user usr ON logs.run_by = usr.identifier 
+                            WHERE logs.query_id IS NOT NULL 
+                              AND logs.time_of_exec >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+                            GROUP BY logs.query_id, usr.first_name, usr.last_name
+                            ORDER BY cnt DESC 
                             LIMIT 5;""",
                 "output_filename": "slowest_running_queries.html",
                 "drop_columns": []
@@ -226,7 +235,6 @@ def main():
         html_sections = ""
 
         for q in queries:
-            print(f"=========== {q['title']} ===========")
             html_table = generate_html_report(
                 query=q["query"],
                 output_filename=q["output_filename"],
