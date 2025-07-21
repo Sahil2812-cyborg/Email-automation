@@ -5,6 +5,7 @@ from datetime import datetime
 import smtplib
 import logging
 from email.message import EmailMessage
+from urllib.parse import urlparse
 
 current_datetime = datetime.now().strftime("%d %b %Y")
 
@@ -26,6 +27,24 @@ def load_config():
         print("Error: 'config.json' file not found.")
         logging.error("File not found")
         return None
+
+def get_server_name_from_url(url):
+    """Extract server name from URL"""
+    try:
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
+        
+        # Remove 'www.' if present and split by '.'
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        
+        # Extract the main part of the domain (before first dot)
+        server_name = domain.split('.')[0]
+        
+        # Capitalize first letter for display
+        return server_name.capitalize()
+    except:
+        return "Unknown Server"
 
 def create_db_connection(config):
     try:
@@ -54,10 +73,10 @@ def execute_query(query, db_connection):
         logging.error(f"Failed to execute query: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
 
-# Updated send_mail function for AWS SES
-def send_mail(html, config):
+# Updated send_mail function for AWS SES with server name
+def send_mail(html, config, server_name):
     msg = EmailMessage()
-    msg['Subject'] = f'OpenSpecimen: Slow query report for {current_datetime}'
+    msg['Subject'] = f'OpenSpecimen: Slow query report for {current_datetime} - {server_name} Server'
     msg['From'] = config.get('emailid')  # This should be dummy@gmail.com
 
     receiver_emails = config.get('to_emailid')
@@ -65,7 +84,7 @@ def send_mail(html, config):
         receiver_emails = [receiver_emails]
     msg['To'] = ", ".join(receiver_emails)
 
-    msg.set_content('Please find below the report on queries run during the last 24 hours.')
+    msg.set_content(f'Please find below the report on queries run during the last 24 hours from {server_name} server.')
     msg.add_alternative(html, subtype='html')
     
     try:
@@ -76,8 +95,8 @@ def send_mail(html, config):
             smtp.login(config.get('smtp_username'), config.get('smtp_password'))
             smtp.send_message(msg)
 
-        logging.info("Email Sent via AWS SES!!")
-        print("Email sent successfully via AWS SES!")
+        logging.info(f"Email Sent via AWS SES for {server_name} server!!")
+        print(f"Email sent successfully via AWS SES for {server_name} server!")
         return True
     
     except smtplib.SMTPAuthenticationError as e:
@@ -150,8 +169,6 @@ def generate_html_report(query, output_filename, config, db_connection, drop_col
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date']).dt.strftime("%d %b %Y %H-%M-%S")
 
-
-
         html_table = df.to_html(index=False, escape=False)
 
         with open(output_filename, 'w') as f:
@@ -172,6 +189,10 @@ def main():
     if config is None:
         logging.error("Failed to load configuration. Exiting.")
         return
+    
+    # Get server name from URL
+    server_name = get_server_name_from_url(config.get('url', ''))
+    logging.info(f"Server identified as: {server_name}")
     
     # Create database connection
     db_connection = create_db_connection(config)
@@ -247,17 +268,24 @@ def main():
         combined_html = f"""
         <html>
         <body>
-            <p>Please find below the report on queries run during the last 24 hours.</p>
+            <div style="background-color: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #007bff;">
+                <h2 style="color: #007bff; margin: 0;">OpenSpecimen Query Report - {server_name} Server</h2>
+                <p style="margin: 5px 0 0 0; color: #666;">Report generated on {datetime.now().strftime("%d %b %Y %H:%M:%S")}</p>
+            </div>
+            
+            <p>Please find below the report on queries run during the last 24 hours from <strong>{server_name}</strong> server.</p>
             {html_sections}
-            <div style="margin-top: 30px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
-                <p><strong>Thanks,</strong><br>Openspecimen Administrator</p>
-                <p><small>Report generated automatically on {datetime.now().strftime("%d %b %Y %H-%M-%S")}</small></p>
+            
+            <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border-top: 3px solid #28a745;">
+                <p><strong>Thanks,</strong><br>OpenSpecimen Administrator</p>
+                <p><small><strong>Server:</strong> {server_name}<br>
+                <strong>Report Time:</strong> {datetime.now().strftime("%d %b %Y %H:%M:%S")}</small></p>
             </div>
         </body>
         </html>
         """
 
-        email_sent = send_mail(combined_html, config)
+        email_sent = send_mail(combined_html, config, server_name)
 
     except Exception as e:
         logging.error(e)
