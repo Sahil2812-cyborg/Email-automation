@@ -258,7 +258,7 @@ def main():
                             log.call_start_time,
                             log.call_end_time,
                             log.url,
-                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) AS difference
+                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) AS "Time Taken(in Seconds)"
                         FROM
                             os_user_api_calls_log log
                         JOIN
@@ -267,7 +267,7 @@ def main():
                             log.call_start_time >= CURDATE()
                             AND log.call_start_time < CURDATE() + INTERVAL 1 DAY
                         ORDER BY
-                            difference DESC
+                            "Time Taken(in Seconds)" DESC
                         LIMIT 5;
                         """,
                 "output_filename": "slow_api_calls.html",
