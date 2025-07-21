@@ -250,7 +250,7 @@ def main():
                 "output_filename": "users_running_most_queries.html",
                 "drop_columns": ["time_taken"]
             },
-                        {
+            {
                 "title": "Top 5 Slow API Calls.",
                 "query": """SELECT
                             CONCAT(usr.first_name, ' ', usr.last_name) AS Name,
@@ -273,13 +273,13 @@ def main():
                 "output_filename": "slow_api_calls.html",
                 "drop_columns": []
             }, 
-                                    {
+            {
                 "title": "Top 5 Slow Queries from slow query log.",
                 "query": """SELECT
                         start_time AS "Start Time",
-                        user_host,
+                        CONVERT(sql_text USING utf8) as Query,
                         query_time AS "Time Taken",
-                        db AS "Db"
+                        db AS "Database"
                     FROM
                         mysql.slow_log
                     ORDER BY
@@ -288,7 +288,7 @@ def main():
                         """,
                 "output_filename": "slow_logs.html",
                 "drop_columns": []
-            },
+            }
               
         ]
 
