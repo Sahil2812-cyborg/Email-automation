@@ -29,11 +29,14 @@ def load_config():
         return None
 
 def get_server_url_info(url):
-    """Extract server URL information"""
+    """Extract server URL information including path"""
     try:
         parsed_url = urlparse(url)
-        # Return the base URL (protocol + domain)
-        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        # Return the base URL (protocol + domain + path)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+        # Remove trailing slash if present
+        if base_url.endswith('/'):
+            base_url = base_url[:-1]
         return base_url
     except:
         return "Unknown Server URL"
