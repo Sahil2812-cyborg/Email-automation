@@ -38,8 +38,10 @@ def get_server_url_info(url):
         if base_url.endswith('/'):
             base_url = base_url[:-1]
         return base_url
-    except:
+    except Exception as e:
+        logging.error(f"URL parsing error: {e}")
         return "Unknown Server URL"
+
 
 def create_db_connection(config):
     try:
@@ -67,11 +69,13 @@ def execute_query(query, db_connection):
     except Exception as e:
         logging.error(f"Failed to execute query: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
+    finally:
+        cursor.close()
 
 # Updated send_mail function for AWS SES with server URL
 def send_mail(html, config, server_url):
     msg = EmailMessage()
-    msg['Subject'] = f'OpenSpecimen: Slow query report for {current_datetime} - {server_url}'
+    msg['Subject'] = f'OpenSpecimen: Slow query report for {current_datetime}'
     msg['From'] = config.get('emailid')  # This should be dummy@gmail.com
 
     receiver_emails = config.get('to_emailid')
@@ -245,7 +249,47 @@ def main():
                             LIMIT 10;""",
                 "output_filename": "users_running_most_queries.html",
                 "drop_columns": ["time_taken"]
-            }
+            },
+                        {
+                "title": "Top 5 Slow API Calls.",
+                "query": """SELECT
+                            CONCAT(usr.first_name, ' ', usr.last_name) AS Name,
+                            log.method,
+                            log.call_start_time,
+                            log.call_end_time,
+                            log.url,
+                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) AS difference
+                        FROM
+                            os_user_api_calls_log log
+                        JOIN
+                            catissue_user usr ON usr.identifier = log.user_id
+                        WHERE
+                            log.call_start_time >= CURDATE()
+                            AND log.call_start_time < CURDATE() + INTERVAL 1 DAY
+                        ORDER BY
+                            difference DESC
+                        LIMIT 5;
+                        """,
+                "output_filename": "slow_api_calls.html",
+                "drop_columns": []
+            }, 
+                                    {
+                "title": "Top 5 Slow Queries from slow query log.",
+                "query": """SELECT
+                        start_time AS "Start Time",
+                        user_host,
+                        query_time AS "Time Taken",
+                        db AS "Db"
+                    FROM
+                        mysql.slow_log
+                    ORDER BY
+                        query_time DESC
+                    LIMIT 5;
+                        """,
+                "output_filename": "slow_logs.html",
+                "drop_columns": []
+            },
+              
         ]
 
         html_sections = ""
