@@ -228,6 +228,7 @@ def main():
                             WHERE 
                                 logs.query_id IS NOT NULL  
                                 AND logs.time_of_exec >= DATE_SUB(NOW(), INTERVAL 1 DAY)  
+                                AND query_sql NOT LIKE '%limit 0, 101%'
                             GROUP BY 
                                 name, logs.query_id
                             ORDER BY 
@@ -239,32 +240,41 @@ def main():
             {
                 "title": "Top 5 most run saved queries.",
                 "query": """SELECT logs.query_id, 
-                                   CONCAT(first_name, ' ', last_name) AS name, 
-                                   COUNT(*) AS cnt, 
-                                   MAX(time_of_exec) AS Date, 
-                                   MAX(time_to_finish) AS time_taken  
-                            FROM catissue_query_audit_logs logs 
-                            JOIN catissue_user user ON logs.run_by = user.identifier 
-                            WHERE query_id IS NOT NULL 
-                              AND time_of_exec >= NOW() - INTERVAL 1 DAY 
-                            GROUP BY name, logs.query_id 
-                            ORDER BY cnt DESC 
-                            LIMIT 5;""",
+                            GROUP_CONCAT(DISTINCT CONCAT(first_name, ' ', last_name) SEPARATOR ', ') AS users, 
+                            COUNT(*) AS total_cnt, 
+                            MAX(time_of_exec) AS Date
+                        FROM catissue_query_audit_logs logs 
+                        JOIN catissue_user user ON logs.run_by = user.identifier 
+                        WHERE query_id IS NOT NULL 
+                        AND time_of_exec >= NOW() - INTERVAL 1 DAY
+                        AND query_sql NOT LIKE '%limit 0, 101%'
+                        GROUP BY logs.query_id 
+                        ORDER BY total_cnt DESC 
+                        LIMIT 5;""",
                 "output_filename": "most_run_saved_queries.html",
                 "drop_columns": ["cnt"]
             },
             {
                 "title": "Top 10 users running most queries.",
-                "query": """SELECT CONCAT(first_name, ' ', last_name) AS name, 
-                                   COUNT(*) AS cnt, 
-                                   MAX(time_of_exec) AS Date, 
-                                   MAX(time_to_finish) AS time_taken 
-                            FROM catissue_query_audit_logs logs 
-                            JOIN catissue_user user ON user.identifier = logs.run_by 
-                            WHERE time_of_exec >= NOW() - INTERVAL 1 DAY 
-                            GROUP BY run_by
-                            ORDER BY cnt DESC
-                            LIMIT 10;""",
+                "query": """SELECT 
+                        CONCAT(first_name, ' ', last_name) AS name, 
+                        COUNT(*) AS cnt, 
+                        MAX(time_of_exec) AS Date,
+                        MAX(time_to_finish) AS time_taken 
+                    FROM 
+                        catissue_query_audit_logs logs 
+                    JOIN 
+                        catissue_user user 
+                        ON user.identifier = logs.run_by 
+                    WHERE 
+                        time_of_exec >= NOW() - INTERVAL 1 DAY  
+                        AND query_sql NOT LIKE '%limit 0, 101%'
+                    GROUP BY 
+                        run_by
+                    ORDER BY 
+                        cnt DESC
+                    LIMIT 10;
+                            """,
                 "output_filename": "users_running_most_queries.html",
                 "drop_columns": ["time_taken"]
             },
@@ -276,7 +286,7 @@ def main():
                             log.call_start_time,
                             log.call_end_time,
                             log.url,
-                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) AS "Time Taken(in Seconds)"
+                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) AS "Time Taken"
                         FROM
                             os_user_api_calls_log log
                         JOIN
