@@ -165,8 +165,21 @@ def generate_html_report(query, output_filename, config, db_connection, drop_col
         df.columns = [col.replace('Time Taken', 'Time Taken (in seconds)') for col in df.columns]
         df.columns = [col.replace('Cnt', 'Number of Queries') for col in df.columns]
 
+        # Format Date column (existing functionality)
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date']).dt.strftime("%d %b %Y %H-%M-%S")
+
+        # Format Call Start Time column
+        if 'Call Start Time' in df.columns:
+            df['Call Start Time'] = pd.to_datetime(df['Call Start Time']).dt.strftime("%d %b %Y %H-%M-%S")
+
+        # Format Call End Time column
+        if 'Call End Time' in df.columns:
+            df['Call End Time'] = pd.to_datetime(df['Call End Time']).dt.strftime("%d %b %Y %H-%M-%S")
+
+        # Format Start Time column (from slow query log)
+        if 'Start Time' in df.columns:
+            df['Start Time'] = pd.to_datetime(df['Start Time']).dt.strftime("%d %b %Y %H-%M-%S")
 
         html_table = df.to_html(index=False, escape=False)
 
@@ -203,17 +216,22 @@ def main():
         queries = [
             {
                 "title": "Top 5 slowest running queries.",
-                "query": """SELECT logs.query_id, 
-                                   CONCAT(usr.first_name, ' ', usr.last_name) AS name, 
-                                   COUNT(*) AS cnt, 
-                                   MAX(logs.time_of_exec) AS Date, 
-                                   MAX(logs.time_to_finish) AS time_taken  
-                            FROM catissue_query_audit_logs logs 
-                            INNER JOIN catissue_user usr ON logs.run_by = usr.identifier 
-                            WHERE logs.query_id IS NOT NULL 
-                              AND logs.time_of_exec >= DATE_SUB(NOW(), INTERVAL 1 DAY)
-                            GROUP BY logs.query_id, usr.first_name, usr.last_name
-                            ORDER BY cnt DESC 
+                "query": """SELECT 
+                                logs.query_id,  
+                                CONCAT(usr.first_name, ' ', usr.last_name) AS name,  
+                                MAX(logs.time_of_exec) AS Date,  
+                                MAX(logs.time_to_finish) AS time_taken  
+                            FROM 
+                                catissue_query_audit_logs logs  
+                            INNER JOIN 
+                                catissue_user usr ON logs.run_by = usr.identifier  
+                            WHERE 
+                                logs.query_id IS NOT NULL  
+                                AND logs.time_of_exec >= DATE_SUB(NOW(), INTERVAL 1 DAY)  
+                            GROUP BY 
+                                name, logs.query_id
+                            ORDER BY 
+                                time_taken  
                             LIMIT 5;""",
                 "output_filename": "slowest_running_queries.html",
                 "drop_columns": []
@@ -278,7 +296,7 @@ def main():
                 "query": """SELECT
                         start_time AS "Start Time",
                         CONVERT(sql_text USING utf8) as Query,
-                        query_time AS "Time Taken",
+                        TIME_TO_SEC(query_time) AS "Time Taken",
                         db AS "Database"
                     FROM
                         mysql.slow_log
@@ -318,7 +336,6 @@ def main():
             
             <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border-top: 3px solid #28a745;">
                 <p><strong>Thanks,</strong><br>OpenSpecimen Administrator</p>
-                <p><small><strong>Server URL:</strong> <a href="{server_url}" target="_blank" style="color: #007bff; text-decoration: none;">{server_url}</a><br>
                 <strong>Report Time:</strong> {datetime.now().strftime("%d %b %Y %H:%M:%S")}</small></p>
             </div>
         </body>
