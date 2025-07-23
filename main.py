@@ -242,7 +242,7 @@ def main():
                 "title": "Top 5 most run saved queries.",
                 "query": """SELECT logs.query_id, 
                                    CONCAT(first_name, ' ', last_name) AS name, 
-                                   COUNT(*) AS cnt, 
+                                   COUNT(*) AS Count, 
                                    MAX(time_of_exec) AS Date, 
                                    MAX(time_to_finish) AS time_taken  
                             FROM catissue_query_audit_logs logs 
@@ -251,10 +251,10 @@ def main():
                               AND logs.time_of_exec >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
                             AND logs.time_of_exec <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND
                             GROUP BY logs.query_id,name 
-                            ORDER BY cnt DESC 
+                            ORDER BY Count DESC 
                             LIMIT 5;""",
                 "output_filename": "most_run_saved_queries.html",
-                "drop_columns": ["cnt"]
+                "drop_columns": ["time_taken"]
             },
             {
                 "title": "Top 10 users running most queries.",
