@@ -227,12 +227,12 @@ def main():
                                 catissue_user usr ON logs.run_by = usr.identifier  
                             WHERE 
                                 logs.query_id IS NOT NULL  
-                                AND logs.time_of_exec >= DATE_SUB(NOW(), INTERVAL 1 DAY)  
+                                AND logs.time_of_exec >= NOW() - INTERVAL 1 DAY 
                                 AND query_sql NOT LIKE '%limit 0, 101%'
                             GROUP BY 
                                 name, logs.query_id
                             ORDER BY 
-                                time_taken  
+                                time_taken 
                             LIMIT 5;""",
                 "output_filename": "slowest_running_queries.html",
                 "drop_columns": []
@@ -292,8 +292,7 @@ def main():
                         JOIN
                             catissue_user usr ON usr.identifier = log.user_id
                         WHERE
-                            log.call_start_time >= CURDATE()
-                            AND log.call_start_time < CURDATE() + INTERVAL 1 DAY
+                            WHERE log.call_start_time >= NOW() - INTERVAL 1 DAY
                         ORDER BY
                             TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) DESC
                         LIMIT 5;
