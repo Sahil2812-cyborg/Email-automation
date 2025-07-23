@@ -167,19 +167,19 @@ def generate_html_report(query, output_filename, config, db_connection, drop_col
 
         # Format Date column (existing functionality)
         if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date']).dt.strftime("%d %b %Y %H-%M-%S")
+            df['Date'] = pd.to_datetime(df['Date']).dt.strftime("%d %b %Y %H:%M:%S")
 
         # Format Call Start Time column
         if 'Call Start Time' in df.columns:
-            df['Call Start Time'] = pd.to_datetime(df['Call Start Time']).dt.strftime("%d %b %Y %H-%M-%S")
+            df['Call Start Time'] = pd.to_datetime(df['Call Start Time']).dt.strftime("%d %b %Y %H:%M:%S")
 
         # Format Call End Time column
         if 'Call End Time' in df.columns:
-            df['Call End Time'] = pd.to_datetime(df['Call End Time']).dt.strftime("%d %b %Y %H-%M-%S")
+            df['Call End Time'] = pd.to_datetime(df['Call End Time']).dt.strftime("%d %b %Y %H:%M:%S")
 
         # Format Start Time column (from slow query log)
         if 'Start Time' in df.columns:
-            df['Start Time'] = pd.to_datetime(df['Start Time']).dt.strftime("%d %b %Y %H-%M-%S")
+            df['Start Time'] = pd.to_datetime(df['Start Time']).dt.strftime("%d %b %Y %H:%M:%S")
 
         html_table = df.to_html(index=False, escape=False)
 
@@ -227,12 +227,13 @@ def main():
                                 catissue_user usr ON logs.run_by = usr.identifier  
                             WHERE 
                                 logs.query_id IS NOT NULL  
-                                AND logs.time_of_exec >= NOW() - INTERVAL 1 DAY 
+                                    AND logs.time_of_exec >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
+                                    AND logs.time_of_exec <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND
                                 AND query_sql NOT LIKE '%limit 0, 101%'
                             GROUP BY 
                                 name, logs.query_id
                             ORDER BY 
-                                time_taken 
+                                time_taken DESC
                             LIMIT 5;""",
                 "output_filename": "slowest_running_queries.html",
                 "drop_columns": []
@@ -240,17 +241,18 @@ def main():
             {
                 "title": "Top 5 most run saved queries.",
                 "query": """SELECT logs.query_id, 
-                            GROUP_CONCAT(DISTINCT CONCAT(first_name, ' ', last_name) SEPARATOR ', ') AS users, 
-                            COUNT(*) AS total_cnt, 
-                            MAX(time_of_exec) AS Date
-                        FROM catissue_query_audit_logs logs 
-                        JOIN catissue_user user ON logs.run_by = user.identifier 
-                        WHERE query_id IS NOT NULL 
-                        AND time_of_exec >= NOW() - INTERVAL 1 DAY
-                        AND query_sql NOT LIKE '%limit 0, 101%'
-                        GROUP BY logs.query_id 
-                        ORDER BY total_cnt DESC 
-                        LIMIT 5;""",
+                                   CONCAT(first_name, ' ', last_name) AS name, 
+                                   COUNT(*) AS cnt, 
+                                   MAX(time_of_exec) AS Date, 
+                                   MAX(time_to_finish) AS time_taken  
+                            FROM catissue_query_audit_logs logs 
+                            JOIN catissue_user user ON logs.run_by = user.identifier 
+                            WHERE query_id IS NOT NULL 
+                              AND logs.time_of_exec >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
+                            AND logs.time_of_exec <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND
+                            GROUP BY logs.query_id,name 
+                            ORDER BY cnt DESC 
+                            LIMIT 5;""",
                 "output_filename": "most_run_saved_queries.html",
                 "drop_columns": ["cnt"]
             },
@@ -267,7 +269,8 @@ def main():
                         catissue_user user 
                         ON user.identifier = logs.run_by 
                     WHERE 
-                        time_of_exec >= NOW() - INTERVAL 1 DAY  
+                           logs.time_of_exec >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
+                            AND logs.time_of_exec <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND 
                         AND query_sql NOT LIKE '%limit 0, 101%'
                     GROUP BY 
                         run_by
@@ -282,19 +285,20 @@ def main():
                 "title": "Top 5 Slow API Calls.",
                 "query": """SELECT
                             CONCAT(usr.first_name, ' ', usr.last_name) AS Name,
-                            log.method,
-                            log.call_start_time,
-                            log.call_end_time,
-                            log.url,
-                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) AS "Time Taken"
+                            logs.method,
+                            logs.call_start_time,
+                            logs.call_end_time,
+                            logs.url,
+                            TIMESTAMPDIFF(SECOND, logs.call_start_time, logs.call_end_time) AS "Time Taken"
                         FROM
-                            os_user_api_calls_log log
+                            os_user_api_calls_log logs
                         JOIN
-                            catissue_user usr ON usr.identifier = log.user_id
+                            catissue_user usr ON usr.identifier = logs.user_id
                         WHERE
-                            WHERE log.call_start_time >= NOW() - INTERVAL 1 DAY
+                             logs.CALL_START_TIME >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
+                            AND logs.CALL_START_TIME <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND
                         ORDER BY
-                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) DESC
+                            TIMESTAMPDIFF(SECOND, logs.call_start_time, logs.call_end_time) DESC
                         LIMIT 5;
                         """,
                 "output_filename": "slow_api_calls.html",
@@ -309,6 +313,9 @@ def main():
                         db AS "Database"
                     FROM
                         mysql.slow_log
+                    WHERE
+                             mysql.slow_log.start_time >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
+                            AND  mysql.slow_log.start_time <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND
                     ORDER BY
                         query_time DESC
                     LIMIT 5;
