@@ -295,7 +295,7 @@ def main():
                             log.call_start_time >= CURDATE()
                             AND log.call_start_time < CURDATE() + INTERVAL 1 DAY
                         ORDER BY
-                            "Time Taken(in Seconds)" DESC
+                            TIMESTAMPDIFF(SECOND, log.call_start_time, log.call_end_time) DESC
                         LIMIT 5;
                         """,
                 "output_filename": "slow_api_calls.html",
