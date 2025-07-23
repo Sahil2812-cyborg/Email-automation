@@ -220,7 +220,7 @@ def main():
                                 logs.query_id,  
                                 CONCAT(usr.first_name, ' ', usr.last_name) AS name,  
                                 MAX(logs.time_of_exec) AS Date,  
-                                MAX(logs.time_to_finish) AS time_taken  
+                                MAX(logs.time_to_finish)/ 1000 AS time_taken
                             FROM 
                                 catissue_query_audit_logs logs  
                             INNER JOIN 
@@ -244,7 +244,6 @@ def main():
                                    CONCAT(first_name, ' ', last_name) AS name, 
                                    COUNT(*) AS Count, 
                                    MAX(time_of_exec) AS Date, 
-                                   MAX(time_to_finish) AS time_taken  
                             FROM catissue_query_audit_logs logs 
                             JOIN catissue_user user ON logs.run_by = user.identifier 
                             WHERE query_id IS NOT NULL 
@@ -254,7 +253,7 @@ def main():
                             ORDER BY Count DESC 
                             LIMIT 5;""",
                 "output_filename": "most_run_saved_queries.html",
-                "drop_columns": ["time_taken"]
+                "drop_columns": []
             },
             {
                 "title": "Top 10 users running most queries.",
@@ -307,18 +306,20 @@ def main():
             {
                 "title": "Top 5 Slow Queries from slow query log.",
                 "query": """SELECT
-                        start_time AS "Start Time",
-                        CONVERT(sql_text USING utf8) as Query,
-                        TIME_TO_SEC(query_time) AS "Time Taken",
-                        db AS "Database"
-                    FROM
-                        mysql.slow_log
-                    WHERE
-                             mysql.slow_log.start_time >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
-                            AND  mysql.slow_log.start_time <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND
-                    ORDER BY
-                        query_time DESC
-                    LIMIT 5;
+                                start_time AS "Start Time",
+                                CONVERT(sql_text USING utf8) AS Query,
+                                TIME_TO_SEC(query_time) AS "Time Taken",
+                                db AS "Database"
+                            FROM
+                                mysql.slow_log
+                            WHERE
+                                start_time >= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 0 SECOND
+                                AND start_time <= DATE(NOW() - INTERVAL 1 DAY) + INTERVAL 1 DAY - INTERVAL 1 SECOND
+                                AND sql_text NOT LIKE "%SQL_NO_CACHE%"
+                            ORDER BY
+                                query_time DESC
+                            LIMIT 5;
+                            ;
                         """,
                 "output_filename": "slow_logs.html",
                 "drop_columns": []
